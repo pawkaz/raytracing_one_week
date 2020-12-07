@@ -8,11 +8,23 @@
 #include "sphere.h"
 #include "vec3.h"
 
+vec3 random_in_unit_sphere() {
+  vec3 p;
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<float> dis(0, 1);
+  do {
+    p = 2.0 * vec3(dis(gen), dis(gen), dis(gen)) - vec3(1, 1, 1);
+  } while (p.squared_length() >= 1.0);
+  return p;
+}
+
 vec3 color(const ray& r, hitable* world) {
   hit_record rec;
 
-  if (world->hit(r, 0.0, MAXFLOAT, rec)) {
-    return 0.5 * vec3(rec.normal.x() + 1, rec.normal.y() + 1, rec.normal.z() + 1);
+  if (world->hit(r, 0.0001, MAXFLOAT, rec)) {
+    vec3 target = rec.p + rec.normal + random_in_unit_sphere();
+    return 0.5 * color(ray(rec.p, target - rec.p), world);
   } else {
     vec3 unit_direction = unit_vector(r.direction());
     float t = 0.5 * (unit_direction.y() + 1.0);
@@ -43,7 +55,7 @@ int main() {
 
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_real_distribution<> dis(0, 1);
+  std::uniform_real_distribution<float> dis(0, 1);
 
   for (int j = ny - 1; j >= 0; --j) {
     for (int i = 0; i < nx; ++i) {
@@ -58,9 +70,9 @@ int main() {
 
       col /= float(ns);
 
-      int ir = int(255.99 * col[0]);
-      int ig = int(255.99 * col[1]);
-      int ib = int(255.99 * col[2]);
+      int ir = int(255.99 * sqrt(col[0]));
+      int ig = int(255.99 * sqrt(col[1]));
+      int ib = int(255.99 * sqrt(col[2]));
 
       myfile << ir << " " << ig << " " << ib << "\n";
     }
