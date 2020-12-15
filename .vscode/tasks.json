@@ -3,12 +3,14 @@
         {
             "type": "cppbuild",
             "label": "C/C++: clang++ build active file",
-            "command": "/usr/bin/clang++",
+            "command": "/usr/bin/g++",
             "args": [
+                "-pthread",
                 "-g",
-                "${file}",
+                "main.cpp",
                 "-o",
-                "${fileDirname}/${fileBasenameNoExtension}"
+                "${workspaceFolder}/main"
+                
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
