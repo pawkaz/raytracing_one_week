@@ -10,7 +10,9 @@
 #include "material.h"
 #include "ray.h"
 #include "sphere.h"
-#include "vec3.h"
+#include "src/thread_pool.h"
+// #include "vec3.h"
+#include "src/vec3e.h"
 
 using namespace std::chrono;
 
@@ -76,11 +78,11 @@ void async_std(
     const camera& cam,
     std::mt19937& gen,
     std::uniform_real_distribution<float>& dis,
-    int* result,
-    std::vector<std::future<void>>& promises) {
+    unsigned* result) {
+  std::vector<std::future<void>> promises;
   for (int j = ny - 1; j >= 0; --j) {
     for (int i = 0; i < nx; ++i) {
-      auto promise = std::async([&, j, i]() mutable {
+      auto promise = std::async([&, j, i]() {
         vec3 col(0, 0, 0);
         for (int s = 0; s < ns; ++s) {
           float u = float(i + dis(gen)) / float(nx);
@@ -96,20 +98,60 @@ void async_std(
         int ig = int(255.99 * sqrt(col[1]));
         int ib = int(255.99 * sqrt(col[2]));
 
-        result[j * nx + i] = ir;
-        result[j * nx + i + 1] = ig;
-        result[j * nx + i + 2] = ib;
+        result[j * nx * 3 + i * 3] = ir;
+        result[j * nx * 3 + i * 3 + 1] = ig;
+        result[j * nx * 3 + i * 3 + 2] = ib;
       });
 
       promises.emplace_back(std::move(promise));
+    }
+  }
+  for (auto& p : promises)
+    p.wait();
+}
+
+void async_std_pool_V1(
+    const int& nx,
+    const int& ny,
+    const int& ns,
+    const hitable* const& world,
+    const camera& cam,
+    std::mt19937& gen,
+    std::uniform_real_distribution<float>& dis,
+    unsigned* result) {
+  thread_pool t_pool;
+  for (int j = ny - 1; j >= 0; --j) {
+    for (int i = 0; i < nx; ++i) {
+      t_pool._async([&, j, i]() {
+        vec3 col(0, 0, 0);
+        for (int s = 0; s < ns; ++s) {
+          float u = float(i + dis(gen)) / float(nx);
+          float v = float(j + dis(gen)) / float(ny);
+          ray r = cam.get_ray(u, v);
+          vec3 p = r.point_at_parameter(2.0);
+          col += color(r, world, 0);
+        }
+
+        col /= float(ns);
+
+        int ir = int(255.99 * sqrt(col[0]));
+        int ig = int(255.99 * sqrt(col[1]));
+        int ib = int(255.99 * sqrt(col[2]));
+
+        result[j * nx * 3 + i * 3] = ir;
+        result[j * nx * 3 + i * 3 + 1] = ig;
+        result[j * nx * 3 + i * 3 + 2] = ib;
+      });
+
+      // promises.emplace_back(std::move(promise));
     }
   }
 }
 
 int main() {
   auto start = high_resolution_clock::now();
-  const int nx = 200;
-  const int ny = 100;
+  const int nx = 800;
+  const int ny = 400;
   const int ns = 100;
 
   const vec3 lower_left_corner(-2., -1., -1.);
@@ -129,21 +171,19 @@ int main() {
   std::mt19937 gen(rd());
   std::uniform_real_distribution<float> dis(0, 1);
 
-  int result[ny][nx][3];
+  auto* result = new unsigned[ny * nx * 3];
 
-  std::vector<std::future<void>> promises;
-
-  async_std(nx, ny, ns, world, cam, gen, dis, &result[0][0][0], promises);
+  // async_std(nx, ny, ns, world, cam, gen, dis, result);
+  async_std_pool_V1(nx, ny, ns, world, cam, gen, dis, result);
 
   std::ofstream myfile;
   myfile.open("test.ppm");
 
   myfile << "P3\n" << nx << " " << ny << "\n255\n";
-  int counter = 0;
   for (int j = ny - 1; j >= 0; --j) {
     for (int i = 0; i < nx; ++i) {
-      promises.at(counter++).wait();
-      myfile << result[j][i][0] << " " << result[j][i][1] << " " << result[j][i][2] << "\n";
+      myfile << result[j * nx * 3 + i * 3] << " " << result[j * nx * 3 + i * 3 + 1] << " "
+             << result[j * nx * 3 + i * 3 + 2] << "\n";
     }
   }
   myfile.close();
@@ -152,5 +192,6 @@ int main() {
   // delete world;
   // delete list[0];
   // delete list[1];
+  delete[] result;
   return 0;
 }

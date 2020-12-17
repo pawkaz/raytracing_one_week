@@ -67,6 +67,16 @@
         "vector": "cpp",
         "random": "cpp",
         "numeric": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "condition_variable": "cpp",
+        "*.tcc": "cpp",
+        "clocale": "cpp",
+        "codecvt": "cpp",
+        "list": "cpp",
+        "map": "cpp",
+        "memory_resource": "cpp",
+        "thread": "cpp",
+        "cinttypes": "cpp",
+        "dense": "cpp"
     }
 }

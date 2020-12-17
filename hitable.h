@@ -2,7 +2,7 @@
 #define HITABLEH
 
 #include "ray.h"
-#include "vec3.h"
+#include "src/vec3e.h"
 
 class material;
 
