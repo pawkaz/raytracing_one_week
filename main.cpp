@@ -124,15 +124,18 @@ void async_std_pool_V1(
     for (int i = 0; i < nx; ++i) {
       t_pool._async([&, j, i]() {
         vec3 col(0, 0, 0);
-        for (int s = 0; s < ns; ++s) {
+        int s = 0;
+        for (s = 0; s < ns; ++s) {
           float u = float(i + dis(gen)) / float(nx);
           float v = float(j + dis(gen)) / float(ny);
           ray r = cam.get_ray(u, v);
           vec3 p = r.point_at_parameter(2.0);
-          col += color(r, world, 0);
+          auto c = color(r, world, 0);
+          col += c;
+          if (s > 20 && (((col / float(s + 1)) - c).squared_length() < 1.0f/255.0f)) break; // optimizer :)
         }
 
-        col /= float(ns);
+        col /= float(s + 1);
 
         int ir = int(255.99 * sqrt(col[0]));
         int ig = int(255.99 * sqrt(col[1]));
@@ -150,8 +153,8 @@ void async_std_pool_V1(
 
 int main() {
   auto start = high_resolution_clock::now();
-  const int nx = 800;
-  const int ny = 400;
+  const int nx = 3840;
+  const int ny = 2160;
   const int ns = 100;
 
   const vec3 lower_left_corner(-2., -1., -1.);
