@@ -16,7 +16,7 @@ int main() {
 
   std::cout << "Hello world" << std::endl;
   const auto aspect_ratio = 16.0 / 9.0;
-  const unsigned nx = 1280;
+  const unsigned nx = 1920;
   const unsigned ny = static_cast<int>(nx / aspect_ratio);
   
   auto start = clock::now();
