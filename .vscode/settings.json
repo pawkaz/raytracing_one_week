@@ -77,6 +77,8 @@
         "memory_resource": "cpp",
         "thread": "cpp",
         "cinttypes": "cpp",
-        "dense": "cpp"
-    }
+        "dense": "cpp",
+        "filesystem": "cpp",
+        "set": "cpp"
+    },
 }

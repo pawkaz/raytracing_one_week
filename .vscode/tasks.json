@@ -3,11 +3,11 @@
         {
             "type": "cppbuild",
             "label": "C/C++: clang++ build active file",
-            "command": "/usr/bin/g++",
+            "command": "/usr/bin/nvcc",
             "args": [
-                "-pthread",
+                // "-pthread",
                 "-g",
-                "main.cpp",
+                "main.cc",
                 "-o",
                 "${workspaceFolder}/main"
                 

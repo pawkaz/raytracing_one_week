@@ -2,8 +2,10 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+// #include <opencv2/opencv.hpp>
 
-class vec3;
+
+// class vec3;
 
 void render_image(float* fb, unsigned nx, unsigned ny);
 
@@ -14,9 +16,9 @@ int main() {
 
   std::cout << "Hello world" << std::endl;
   const auto aspect_ratio = 16.0 / 9.0;
-  const unsigned nx = 1920;
+  const unsigned nx = 1280;
   const unsigned ny = static_cast<int>(nx / aspect_ratio);
-
+  
   auto start = clock::now();
 
   // allocate FB
@@ -42,6 +44,9 @@ int main() {
     }
   }
   file.close();
+
+  // cv::Mat img = cv::Mat(ny, nx, CV_32FC3, h_fb);
+  // cv::imwrite("test.jpg", img);
   delete[] h_fb;
 
   return 0;
