@@ -5,6 +5,7 @@
 #include "camera.h"
 #include "hitable.h"
 #include "hitable_list.h"
+#include "material.h"
 #include "memory"
 #include "ray.h"
 #include "sphere.h"
@@ -20,28 +21,30 @@ void check_cuda(cudaError_t result, char const* const func, const char* const fi
     exit(99);
   }
 }
-// __device__ float hit_sphere(const point3& center, double radius, const ray& r) {
-//   vec3 oc = r.origin() - center;
-//   auto a = r.direction().length_squared();
-//   auto half_b = dot(oc, r.direction());
-//   auto c = oc.length_squared() - radius * radius;
-//   auto discriminant = half_b * half_b - a * c;
-//   if (discriminant < 0) {
-//     return -1.0;
-//   } else {
-//     return (-half_b - sqrt(discriminant)) / a;
-//   }
-// }
 
-__device__ vec3 ray_color(const ray& r, hitable** world) {
-  hit_record rec;
+__device__ vec3 ray_color(const ray& r, hitable** world, curandState* r_state) {
+  ray c_ray = r;
+  color c_attenuation(1, 1, 1);
 
-  if ((*world)->hit(r, 0.001f, FLT_MAX, rec)) {
-    return 0.5 * (rec.normal + vec3(1, 1, 1));
+  for (unsigned step = 0; step < 50; ++step) {
+    hit_record rec;
+    if ((*world)->hit(c_ray, 0.001f, FLT_MAX, rec)) {
+      ray scattered;
+      vec3 attenuation;
+      if (rec.mat_ptr->scatter(c_ray, rec, attenuation, scattered, r_state)) {
+        c_attenuation *= attenuation;
+        c_ray = scattered;
+      } else {
+        return vec3(0.0, 0.0, 0.0);
+      }
+    } else {
+      vec3 unit_direction = unit_vector(c_ray.direction());
+      auto t = 0.5f * (unit_direction.y() + 1.0f);
+      auto c = (1.0 - t) * color(1.0, 1.0, 1.0) + t * color(0.5, 0.7, 1.0);
+      return c_attenuation * c;
+    }
   }
-  vec3 unit_direction = unit_vector(r.direction());
-  auto t = 0.5 * (unit_direction.y() + 1.0);
-  return (1.0 - t) * color(1.0, 1.0, 1.0) + t * color(0.5, 0.7, 1.0);
+  return vec3(0.0, 0.0, 0.0);
 }
 
 __global__ void render(
@@ -58,27 +61,75 @@ __global__ void render(
   if (x >= max_x || y >= max_y)
     return;
 
-  curand_init(1984, 0, 0, rand_state + idx);
+  curand_init(1984 + idx, 0, 0, &rand_state[idx]);
   curandState local_rand_state = rand_state[idx];
   vec3 color{0, 0, 0};
 
-  for (unsigned i=0; i < ns; ++i) {
+  for (unsigned i = 0; i < ns; ++i) {
     float u = (x + curand_uniform(&local_rand_state)) / float(max_x);
     float v = (y + curand_uniform(&local_rand_state)) / float(max_y);
 
-    auto r = (*cam)->get_ray(u, v);
+    auto r = (*cam)->get_ray(u, v, &local_rand_state);
 
-    color += ray_color(r, world);
+    color += ray_color(r, world, &local_rand_state);
   }
-  f[idx] = color / float(ns);
+  color /= float(ns);
+  color = vec3(sqrt(color.r()), sqrt(color.g()), sqrt(color.b()));
+  f[idx] = color;
 }
 
 __global__ void create_world(hitable** d_list, hitable** d_world, camera** d_cam) {
   if (threadIdx.x == 0 && blockIdx.x == 0) {
-    *(d_list) = new sphere(vec3(0, 0, -1), 0.5);
-    *(d_list + 1) = new sphere(vec3(0, -100.5, -1), 100);
-    *d_world = new hitable_list(d_list, 2);
-    *d_cam = new camera();
+    // auto list = new sphere[2];
+    curandState c_state;
+    curand_init(10000, 0, 0, &c_state);
+
+    d_list[0] = new sphere(vec3(0, -1000, 0), 1000, new lambertian(vec3(0.5, 0.5, 0.5)));
+    d_list[1] = new sphere(vec3(0, 1, 0), 1.0, new dielectric(1.5f));
+    d_list[2] = new sphere(vec3(-4, 1, 0), 1.0, new lambertian(vec3(0.4, 0.2, 0.1)));
+    d_list[3] = new sphere(vec3(4, 1, 0), 1.0, new metal(vec3(0.7, 0.6, 0.5), 0));
+    auto idx =  4;
+
+    for (int a = -11; a < 11; a++) {
+        for (int b = -11; b < 11; b++) {
+            auto choose_mat = curand_uniform(&c_state);
+            point3 center(a + 0.9*curand_uniform(&c_state), 0.2, b + 0.9*curand_uniform(&c_state));
+
+            if ((center - point3(4, 0.2, 0)).length() > 0.9) {
+                material* sphere_material;
+
+                if (choose_mat < 0.8) {
+                    // diffuse
+                    auto a_ = vec3(curand_uniform(&c_state), curand_uniform(&c_state), curand_uniform(&c_state));
+                    auto b_ = vec3(curand_uniform(&c_state), curand_uniform(&c_state), curand_uniform(&c_state));
+
+                    auto albedo =  a_ * b_;
+                    sphere_material = new lambertian(albedo);
+                } else if (choose_mat < 0.95) {
+                    // metal
+                    auto a_ = vec3(curand_uniform(&c_state), curand_uniform(&c_state), curand_uniform(&c_state));
+                    color albedo = a_ / 2.0f + vec3(0.5, 0.5, 0.5);
+                    auto fuzz = curand_uniform(&c_state) / 2.0f;
+                    sphere_material = new metal(albedo, fuzz);
+                } else {
+                    // glass
+                    sphere_material = new dielectric(1.5);                    
+                }
+                d_list[idx++] = new sphere(center, 0.2, sphere_material);
+            }
+        }
+    }
+    // // printf("%d\n", idx);
+
+    *d_world = new hitable_list(d_list, idx);
+
+    point3 lookfrom(13, 2, 3);
+    point3 lookat(0, 0, 0);
+    vec3 vup(0, 1, 0);
+    auto dist_to_focus = 10.0;
+    auto aperture = 0.1;
+    auto aspect_ratio = 16.0 / 9.0;
+    *d_cam = new camera(lookfrom, lookat, vup, 20, aspect_ratio, aperture, dist_to_focus);
   }
 }
 
@@ -94,7 +145,7 @@ __global__ void free_world(hitable** d_list, hitable** d_world, camera** cam) {
 void render_image(float* const h_fb, const unsigned nx, const unsigned ny) {
   vec3* d_fb;
 
-  const unsigned tx = 8, ty = 8, num_pixels = nx * ny;
+  const unsigned tx = 16, ty = 16, num_pixels = nx * ny;
   const unsigned samples_per_pixel = 100;
   const size_t fb_size = num_pixels * sizeof(vec3);
 
@@ -109,7 +160,7 @@ void render_image(float* const h_fb, const unsigned nx, const unsigned ny) {
   checkCudaErrors(cudaMalloc((void**)&cam, sizeof(camera*)));
 
   hitable** d_list;
-  checkCudaErrors(cudaMalloc((void**)&d_list, 2 * sizeof(hitable*)));
+  checkCudaErrors(cudaMalloc((void**)&d_list, (487) * sizeof(hitable*)));
   hitable** d_world;
   checkCudaErrors(cudaMalloc((void**)&d_world, sizeof(hitable*)));
   create_world<<<1, 1>>>(d_list, d_world, cam);

@@ -16,7 +16,7 @@ int main() {
 
   std::cout << "Hello world" << std::endl;
   const auto aspect_ratio = 16.0 / 9.0;
-  const unsigned nx = 1920;
+  const unsigned nx = 400;
   const unsigned ny = static_cast<int>(nx / aspect_ratio);
   
   auto start = clock::now();
@@ -25,7 +25,7 @@ int main() {
   auto* h_fb = new float[nx * ny * 3];
   render_image(h_fb, nx, ny);
 
-  std::cout << "Ended in " << duration_cast<seconds>(clock::now() - start).count() << "ms\n";
+  std::cout << "Ended in " << duration_cast<seconds>(clock::now() - start).count() << "s\n";
 
   ofstream file;
   file.open("test.ppm");

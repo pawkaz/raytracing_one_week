@@ -60,6 +60,12 @@ class vec3 {
   }
   __host__ __device__ inline void make_unit_vector();
 
+  __host__ __device__ bool near_zero() const {
+    // Return true if the vector is close to zero in all dimensions.
+    const auto s = 1e-8;
+    return (fabs(e[0]) < s) && (fabs(e[1]) < s) && (fabs(e[2]) < s);
+  }
+
   float e[3];
 };
 
@@ -165,6 +171,18 @@ __host__ __device__ inline vec3& vec3::operator/=(const float t) {
 
 __host__ __device__ inline vec3 unit_vector(vec3 v) {
   return v / v.length();
+}
+
+__device__ vec3 random_in_unit_sphere(curandState* r_state, bool unit_length = true) {
+  vec3 p;
+  do {
+    p = 2.0f * vec3(curand_uniform(r_state), curand_uniform(r_state), curand_uniform(r_state)) - vec3(1, 1, 1);
+  } while (p.length_squared() >= 1.0f);
+  return unit_length ? unit_vector(p) : p;
+}
+
+__device__ inline float degrees_to_radians(double degrees) {
+    return degrees * 3.141592654f / 180.0;
 }
 
 using point3 = vec3;
