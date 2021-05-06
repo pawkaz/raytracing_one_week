@@ -1,5 +1,5 @@
-#ifndef RAY_H
-#define RAY_H
+#ifndef HITTABLE_H
+#define HITTABLE_H
 //==============================================================================================
 // Originally written in 2016 by Peter Shirley <ptrshrl@gmail.com>
 //
@@ -11,32 +11,29 @@
 // along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
 //==============================================================================================
 
-#include "vec3.h"
+#include "rtweekend.h"
+
+class material;
 
 
-class ray {
-    public:
-        ray() {}
-        ray(const point3& origin, const vec3& direction)
-            : orig(origin), dir(direction), tm(0)
-        {}
+struct hit_record {
+    point3 p;
+    vec3 normal;
+    shared_ptr<material> mat_ptr;
+    double t;
+    bool front_face;
 
-        ray(const point3& origin, const vec3& direction, double time)
-            : orig(origin), dir(direction), tm(time)
-        {}
-
-        point3 origin() const  { return orig; }
-        vec3 direction() const { return dir; }
-        double time() const    { return tm; }
-
-        point3 at(double t) const {
-            return orig + t*dir;
-        }
-
-    public:
-        point3 orig;
-        vec3 dir;
-        double tm;
+    inline void set_face_normal(const ray& r, const vec3& outward_normal) {
+        front_face = dot(r.direction(), outward_normal) < 0;
+        normal = front_face ? outward_normal :-outward_normal;
+    }
 };
+
+
+class hittable {
+    public:
+        virtual bool hit(const ray& r, double t_min, double t_max, hit_record& rec) const = 0;
+};
+
 
 #endif

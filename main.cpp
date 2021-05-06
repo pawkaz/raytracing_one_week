@@ -1,134 +1,134 @@
-#include <fstream>
-#include <iostream>
-#include <random>
+//==============================================================================================
+// Originally written in 2016 by Peter Shirley <ptrshrl@gmail.com>
+//
+// To the extent possible under law, the author(s) have dedicated all copyright and related and
+// neighboring rights to this software to the public domain worldwide. This software is
+// distributed without any warranty.
+//
+// You should have received a copy (see file COPYING.txt) of the CC0 Public Domain Dedication
+// along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//==============================================================================================
+
+#include "rtweekend.h"
+
 #include "camera.h"
-#include "hitable.h"
-#include "hitablelist.h"
-#include "ray.h"
-#include "sphere.h"
-#include "vec3.h"
+#include "color.h"
+#include "hittable_list.h"
 #include "material.h"
+#include "sphere.h"
+
+#include <iostream>
 
 
-hitable *random_scene() {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> dis(0, 1);
-    int n = 500;
-    hitable **list = new hitable*[n+1];
-    list[0] =  new sphere(vec3(0,-1000,0), 1000, new lambertian(vec3(0.5, 0.5, 0.5)));
-    int i = 1;
+color ray_color(const ray& r, const hittable& world, int depth) {
+    hit_record rec;
+
+    // If we've exceeded the ray bounce limit, no more light is gathered.
+    if (depth <= 0)
+        return color(0,0,0);
+
+    if (world.hit(r, 0.001, infinity, rec)) {
+        ray scattered;
+        color attenuation;
+        if (rec.mat_ptr->scatter(r, rec, attenuation, scattered))
+            return attenuation * ray_color(scattered, world, depth-1);
+        return color(0,0,0);
+    }
+
+    vec3 unit_direction = unit_vector(r.direction());
+    auto t = 0.5*(unit_direction.y() + 1.0);
+    return (1.0-t)*color(1.0, 1.0, 1.0) + t*color(0.5, 0.7, 1.0);
+}
+
+
+hittable_list random_scene() {
+    hittable_list world;
+
+    auto ground_material = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+    world.add(make_shared<sphere>(point3(0,-1000,0), 1000, ground_material));
+
     for (int a = -11; a < 11; a++) {
         for (int b = -11; b < 11; b++) {
-            float choose_mat = dis(gen);
-            vec3 center(a+0.9*dis(gen),0.2,b+0.9*dis(gen));
-            if ((center-vec3(4,0.2,0)).length() > 0.9) {
-                if (choose_mat < 0.8) {  // diffuse
-                    list[i++] = new sphere(
-                        center, 0.2,
-                        new lambertian(vec3(dis(gen)*dis(gen),
-                                            dis(gen)*dis(gen),
-                                            dis(gen)*dis(gen)))
-                    );
-                }
-                else if (choose_mat < 0.95) { // metal
-                    list[i++] = new sphere(
-                        center, 0.2,
-                        new metal(vec3(0.5*(1 + dis(gen)),
-                                       0.5*(1 + dis(gen)),
-                                       0.5*(1 + dis(gen))),
-                                  0.5*dis(gen))
-                    );
-                }
-                else {  // glass
-                    list[i++] = new sphere(center, 0.2, new dielectric(1.5));
+            auto choose_mat = random_double();
+            point3 center(a + 0.9*random_double(), 0.2, b + 0.9*random_double());
+
+            if ((center - point3(4, 0.2, 0)).length() > 0.9) {
+                shared_ptr<material> sphere_material;
+
+                if (choose_mat < 0.8) {
+                    // diffuse
+                    auto albedo = color::random() * color::random();
+                    sphere_material = make_shared<lambertian>(albedo);
+                    world.add(make_shared<sphere>(center, 0.2, sphere_material));
+                } else if (choose_mat < 0.95) {
+                    // metal
+                    auto albedo = color::random(0.5, 1);
+                    auto fuzz = random_double(0, 0.5);
+                    sphere_material = make_shared<metal>(albedo, fuzz);
+                    world.add(make_shared<sphere>(center, 0.2, sphere_material));
+                } else {
+                    // glass
+                    sphere_material = make_shared<dielectric>(1.5);
+                    world.add(make_shared<sphere>(center, 0.2, sphere_material));
                 }
             }
         }
     }
 
-    list[i++] = new sphere(vec3(0, 1, 0), 1.0, new dielectric(1.5));
-    list[i++] = new sphere(vec3(-4, 1, 0), 1.0, new lambertian(vec3(0.4, 0.2, 0.1)));
-    list[i++] = new sphere(vec3(4, 1, 0), 1.0, new metal(vec3(0.7, 0.6, 0.5), 0.0));
+    auto material1 = make_shared<dielectric>(1.5);
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material1));
 
-    return new hitable_list(list,i);
+    auto material2 = make_shared<lambertian>(color(0.4, 0.2, 0.1));
+    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, material2));
+
+    auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material3));
+
+    return world;
 }
 
-vec3 color(const ray& r, hitable* world, int depth) {
-  hit_record rec;
-
-  if (world->hit(r, 0.0001, MAXFLOAT, rec)) {
-    ray scattered;
-    vec3 attenuation;
-
-    if (depth < 50 && rec.mat_ptr->scatter(r, rec, attenuation, scattered)) {
-      return attenuation * color(scattered, world, depth + 1);
-    } else {
-      return vec3(0, 0, 0);
-    }
-  } else {
-    vec3 unit_direction = unit_vector(r.direction());
-    float t = 0.5 * (unit_direction.y() + 1.0);
-    return (1.0 - t) * vec3(1., 1., 1.) + t * vec3(.5, .7, 1.);
-  }
-}
 
 int main() {
-  int nx = 800;
-  int ny = 400;
-  int ns = 100;
 
-  std::ofstream myfile;
-  myfile.open("test.ppm");
+    // Image
 
-  myfile << "P3\n" << nx << " " << ny << "\n255\n";
+    const auto aspect_ratio = 16.0 / 9.0;
+    const int image_width = 1200;
+    const int image_height = static_cast<int>(image_width / aspect_ratio);
+    const int samples_per_pixel = 20;
+    const int max_depth = 50;
 
-  vec3 lower_left_corner(-2., -1., -1.);
-  vec3 horizontal(4., 0., 0.);
-  vec3 vertical(0., 2., 0.);
-  vec3 origin(0., 0., 0.);
+    // World
 
-  // hitable* list[4];
-  // list[0] = new sphere(vec3(0, 0, -1), 0.5, new lambertian(vec3(0.1, 0.2, 0.5)));
-  // list[1] = new sphere(vec3(0, -100.5, -1), 100, new lambertian(vec3(0.8, 0.8, 0)));
-  // list[2] = new sphere(vec3(1, 0, -1), .5, new metal(vec3(0.8, 0.6, 0.2)));
-  // list[3] = new sphere(vec3(-1, 0, -1), .5, new dielectric(1.5));
-  // hitable* world = new hitable_list(list, 4);
-  hitable* world = random_scene();
+    auto world = random_scene();
 
-  vec3 lookfrom(13,2,3);
-  vec3 lookat(0,0,0);
-  float dist_to_focus = 10.0;
-  float aperture = 0.1;
-  camera cam(lookfrom, lookat, vec3(0,1,0), 20, float(nx)/float(ny), aperture, dist_to_focus);
+    // Camera
 
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> dis(0, 1);
+    point3 lookfrom(13,2,3);
+    point3 lookat(0,0,0);
+    vec3 vup(0,1,0);
+    auto dist_to_focus = 10.0;
+    auto aperture = 0.1;
 
-  for (int j = ny - 1; j >= 0; --j) {
-    for (int i = 0; i < nx; ++i) {
-      vec3 col(0, 0, 0);
-      for (int s = 0; s < ns; ++s) {
-        float u = float(i + dis(gen)) / float(nx);
-        float v = float(j + dis(gen)) / float(ny);
-        ray r = cam.get_ray(u, v);
-        vec3 p = r.point_at_parameter(2.0);
-        col += color(r, world, 0);
-      }
+    camera cam(lookfrom, lookat, vup, 20, aspect_ratio, aperture, dist_to_focus);
 
-      col /= float(ns);
+    // Render
 
-      int ir = int(255.99 * sqrt(col[0]));
-      int ig = int(255.99 * sqrt(col[1]));
-      int ib = int(255.99 * sqrt(col[2]));
+    std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 
-      myfile << ir << " " << ig << " " << ib << "\n";
+    for (int j = image_height-1; j >= 0; --j) {
+        std::cerr << "\rScanlines remaining: " << j << ' ' << std::flush;
+        for (int i = 0; i < image_width; ++i) {
+            color pixel_color(0,0,0);
+            for (int s = 0; s < samples_per_pixel; ++s) {
+                auto u = (i + random_double()) / (image_width-1);
+                auto v = (j + random_double()) / (image_height-1);
+                ray r = cam.get_ray(u, v);
+                pixel_color += ray_color(r, world, max_depth);
+            }
+            write_color(std::cout, pixel_color, samples_per_pixel);
+        }
     }
-  }
-  myfile.close();
-  delete world;
-  // delete list[0];
-  // delete list[1];
-  return 0;
+
+    std::cerr << "\nDone.\n";
 }
